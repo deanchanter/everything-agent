@@ -28,9 +28,6 @@ server = Server()
 server_params = StdioServerParameters(
     command="npx",
     args=["-y", "@modelcontextprotocol/server-everything"],
-    env={
-        "PATH": os.getenv("PATH", default=""),
-    },
 )
 
 # Global variable to store MCP tools
@@ -61,7 +58,7 @@ async def everything_agent(
     input: Message,
     llm: Annotated[
         LLMServiceExtensionServer,
-        LLMServiceExtensionSpec.single_demand(suggested=("ibm/granite-3-3-8b-instruct", "llama3.1", "gpt-4o-mini"))
+        LLMServiceExtensionSpec.single_demand()
     ],
 ):
     """Advanced RequirementAgent using all MCP everything server tools with LLM integration"""
@@ -88,7 +85,7 @@ async def everything_agent(
             base_url=llm_config.api_base,
             api_key=llm_config.api_key,
             parameters=ChatModelParameters(temperature=0.0),
-            #tool_choice_support=set()
+            tool_choice_support=set()
         )
         print(f"🔧 Loaded {len(all_tools)} MCP tools")
         
@@ -132,11 +129,6 @@ IMPORTANT: Always select and use the most appropriate MCP tools based on the use
             yield AgentMessage(text=response.text)
         else:
             yield AgentMessage(text=f"Agent response: {str(response)}")
-        
-        # Show available tools info
-        tools_info = f"\n\n**Available MCP Tools ({len(all_tools)}):**\n" + \
-                    "\n".join([f"• {tool.name}: {tool.description}" for tool in all_tools])
-        yield AgentMessage(text=tools_info)
         
     except Exception as e:
         import traceback
