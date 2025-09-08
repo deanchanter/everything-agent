@@ -12,7 +12,7 @@ from a2a.utils.message import get_message_text
 from beeai_sdk.server import Server
 from beeai_sdk.a2a.types import AgentMessage
 from beeai_sdk.a2a.extensions import LLMServiceExtensionServer, LLMServiceExtensionSpec
-from beeai_framework.tools.mcp import MCPTool, MCPClient
+from beeai_framework.tools.mcp import MCPTool
 from beeai_framework.agents.tool_calling import ToolCallingAgent
 from beeai_framework.adapters.openai import OpenAIChatModel
 from beeai_framework.backend.types import ChatModelParameters
@@ -36,32 +36,22 @@ server_params = StdioServerParameters(
 # Global variable to store MCP tools
 mcp_tools: List[MCPTool] = []
 
-async def get_mcp_tool(client: MCPClient, tool_name: str) -> MCPTool:
-    """Get a specific MCP tool from the client"""
-    tools = await MCPTool.from_client(client)
-    filtered_tools = list(filter(lambda tool: tool.name == tool_name, tools))
-    if filtered_tools:
-        return filtered_tools[0]
-    else:
-        raise ValueError(f"Tool {tool_name} not found")
-
 async def initialize_selected_mcp_tools():
-    """Initialize selected MCP tools using MCPClient pattern"""
+    """Initialize all MCP tools from everything server"""
     try:
         logger.info("Connecting to MCP Everything server...")
         client = stdio_client(server_params)
         
-        # Get just the echo tool first to test the pattern
-        selected_tools = []
-        try:
-            echo_tool = await get_mcp_tool(client, "echo")
-            selected_tools.append(echo_tool)
-            logger.info(f"Loaded MCP tool: {echo_tool.name} - {echo_tool.description}")
-        except Exception as e:
-            logger.warning(f"Failed to load echo tool: {e}")
+        # Get all tools at once
+        logger.info("Loading all MCP tools...")
+        all_tools = await MCPTool.from_client(client)
         
-        logger.info(f"Successfully loaded {len(selected_tools)} MCP tools")
-        return selected_tools
+        # Use all available tools
+        for tool in all_tools:
+            logger.info(f"Loaded MCP tool: {tool.name} - {tool.description}")
+        
+        logger.info(f"Successfully loaded {len(all_tools)} MCP tools")
+        return all_tools
     except Exception as e:
         logger.error(f"Failed to initialize MCP tools: {e}")
         return []
@@ -76,9 +66,9 @@ async def everything_agent(
 ):
     """Advanced RequirementAgent using all MCP everything server tools with LLM integration"""
     
-    # Initialize selected MCP tools using proper pattern
-    selected_tools = await initialize_selected_mcp_tools()
-    if not selected_tools:
+    # Initialize all MCP tools
+    all_tools = await initialize_selected_mcp_tools()
+    if not all_tools:
         yield AgentMessage(text="❌ Failed to connect to MCP Everything server")
         return
     
@@ -98,19 +88,19 @@ async def everything_agent(
             base_url=llm_config.api_base,
             api_key=llm_config.api_key,
             parameters=ChatModelParameters(temperature=0.0),
-            tool_choice_support=set()
+            #tool_choice_support=set()
         )
-        print(f"🔧 Loaded {len(selected_tools)} MCP tools")
+        print(f"🔧 Loaded {len(all_tools)} MCP tools")
         
-        # Create ToolCallingAgent with selected MCP tools and custom system prompt
+        # Create ToolCallingAgent with all MCP tools and custom system prompt
         tool_calling_agent = ToolCallingAgent(
             llm=chat_model,
             memory=UnconstrainedMemory(),
-            tools=selected_tools,  # Selected MCP tools to avoid schema conflicts
+            tools=all_tools,  # All MCP tools from everything server
             templates={
                 "system": lambda template: template.update(
                     defaults={
-                        "instructions": f"""You are an advanced agent with access to {len(selected_tools)} MCP Everything server tools.
+                        "instructions": f"""You are an advanced agent with access to {len(all_tools)} MCP Everything server tools.
 
 Available tools:
 - echo: Repeat messages back to the user
@@ -144,8 +134,8 @@ IMPORTANT: Always select and use the most appropriate MCP tools based on the use
             yield AgentMessage(text=f"Agent response: {str(response)}")
         
         # Show available tools info
-        tools_info = f"\n\n**Available MCP Tools ({len(selected_tools)}):**\n" + \
-                    "\n".join([f"• {tool.name}: {tool.description}" for tool in selected_tools])
+        tools_info = f"\n\n**Available MCP Tools ({len(all_tools)}):**\n" + \
+                    "\n".join([f"• {tool.name}: {tool.description}" for tool in all_tools])
         yield AgentMessage(text=tools_info)
         
     except Exception as e:
