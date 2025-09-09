@@ -13,10 +13,9 @@ from beeai_sdk.server import Server
 from beeai_sdk.a2a.types import AgentMessage
 from beeai_sdk.a2a.extensions import LLMServiceExtensionServer, LLMServiceExtensionSpec
 from beeai_framework.tools.mcp import MCPTool
-from beeai_framework.agents.tool_calling import ToolCallingAgent
+from beeai_framework.agents.experimental import RequirementAgent
 from beeai_framework.adapters.openai import OpenAIChatModel
 from beeai_framework.backend.types import ChatModelParameters
-from beeai_framework.memory import UnconstrainedMemory
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -76,6 +75,8 @@ async def everything_agent(
             yield AgentMessage(text="❌ No LLM service available")
             return
             
+        print(f"🔧 Loaded {len(all_tools)} MCP tools")
+        
         # Get LLM configuration from BeeAI platform
         llm_config = llm.data.llm_fulfillments.get("default")
         
@@ -87,44 +88,20 @@ async def everything_agent(
             parameters=ChatModelParameters(temperature=0.0),
             tool_choice_support=set()
         )
-        print(f"🔧 Loaded {len(all_tools)} MCP tools")
         
-        # Create ToolCallingAgent with all MCP tools and custom system prompt
-        tool_calling_agent = ToolCallingAgent(
+        # Create RequirementAgent with all MCP tools
+        requirement_agent = RequirementAgent(
             llm=chat_model,
-            memory=UnconstrainedMemory(),
             tools=all_tools,  # All MCP tools from everything server
-            templates={
-                "system": lambda template: template.update(
-                    defaults={
-                        "instructions": f"""You are an advanced agent with access to {len(all_tools)} MCP Everything server tools.
-
-Available tools:
-- echo: Repeat messages back to the user
-- add: Perform mathematical addition of two numbers
-- printEnv: Show environment variables for debugging
-- listRoots: Display available MCP roots
-- sampleLLM: Generate AI responses using MCP's LLM sampling
-- longRunningOperation: Demonstrate progress updates for long tasks
-- getTinyImage: Generate small test images
-- annotatedMessage: Create messages with metadata annotations
-- getResourceReference: Retrieve resource references
-- startElicitation: Interactive user preference collection
-- structuredContent: Return structured data with schemas
-
-IMPORTANT: Always select and use the most appropriate MCP tools based on the user's request. For math problems, use 'add'. For echoing text, use 'echo'. For images, use 'getTinyImage'. Be intelligent about tool selection.""",
-                    }
-                )
-            }
         )
         
-        # Run the tool calling agent - it will intelligently select MCP tools
-        yield AgentMessage(text="🤖 **ToolCallingAgent with MCP Everything Server**")
-        response = await tool_calling_agent.run(user_message)
+        # Run the requirement agent - it will intelligently select MCP tools
+        yield AgentMessage(text="🤖 **RequirementAgent with MCP Everything Server**")
+        response = await requirement_agent.run(user_message)
         
-        # Stream the response from ToolCallingAgent
-        if hasattr(response, 'last_message') and hasattr(response.last_message, 'text'):
-            yield AgentMessage(text=response.last_message.text)
+        # Stream the response from RequirementAgent
+        if hasattr(response, 'answer') and hasattr(response.answer, 'text'):
+            yield AgentMessage(text=response.answer.text)
         elif hasattr(response, 'text'):
             yield AgentMessage(text=response.text)
         else:
