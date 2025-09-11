@@ -22,6 +22,7 @@ from beeai_framework.tools.think import ThinkTool
 from beeai_sdk.a2a.extensions import (
     AgentDetail,
     AgentDetailTool,
+    AgentDetailContributor,
     LLMServiceExtensionServer,
     LLMServiceExtensionSpec,
     TrajectoryExtensionServer,
@@ -217,10 +218,13 @@ def handle_mcp_resource_link(item, tool_name: str):
                 description="Initiate interactive elicitation processes for gathering user input."
             )
         ],
-        framework="BeeAI + MCP",
-        author={
-            "name": "Everything Agent Developer"
-        }
+        framework="BeeAI",
+        homepage_url="https://github.com/deanchanter/everything-agent",
+        container_image_url="ghcr.io/deanchanter/everything-agent/my-agent",
+        author=AgentDetailContributor(
+            name="Dean Chanter",
+            email="dean.chanter@ibm.com",
+        ),
     ),
     skills=[
         AgentSkill(
@@ -233,20 +237,19 @@ def handle_mcp_resource_link(item, tool_name: str):
                 The agent thinks through problems systematically and uses appropriate tools to accomplish tasks efficiently.
                 """
             ),
-            tags=["Math", "Content", "Files", "Web", "Interactive", "Testing"],
+            tags=["MCP", "Math", "Content", "Files", "Interactive", "Testing"],
             examples=[
                 "Add 5 and 3 together",
                 "Echo back my message: Hello World",
                 "Run a long running operation and show me progress",
                 "Get a tiny test image",
+                "Get me a sample text resource to download",
                 "Show me a sample LLM response",
                 "Create an annotated message with examples",
                 "Start an interactive elicitation process",
                 "Get a resource reference for ID 42",
                 "Test the simple prompt feature",
                 "Try the complex prompt with temperature 0.7 and casual style",
-                "Help me understand how MCP tools work",
-                "Process some data and show me the results",
                 "Demonstrate the capabilities of the Everything Server"
             ]
         )
