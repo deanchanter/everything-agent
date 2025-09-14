@@ -2,6 +2,7 @@ import asyncio
 import base64
 import logging
 import os
+import traceback
 import uuid
 from textwrap import dedent
 from typing import Annotated, List
@@ -28,7 +29,8 @@ from beeai_sdk.a2a.extensions import (
     TrajectoryExtensionServer,
     TrajectoryExtensionSpec,
 )
-from beeai_sdk.a2a.types import AgentArtifact, AgentMessage, FilePart, FileWithBytes
+from beeai_sdk.a2a.types import AgentMessage
+from beeai_sdk.platform.file import File
 from beeai_sdk.server import Server
 from beeai_sdk.server.agent import AgentSkill
 
@@ -66,116 +68,53 @@ async def initialize_selected_mcp_tools():
         return []
 
 
-def create_file_artifact(filename: str, content: str, mime_type: str) -> AgentArtifact:
-    """Create a downloadable file artifact from content"""
+
+async def create_file_from_data(data, filename: str, mime_type: str):
+    """Generic helper to create downloadable files from various data formats"""
     try:
-        # Convert content to base64
-        content_bytes = content.encode('utf-8')
-        base64_content = base64.b64encode(content_bytes).decode('utf-8')
-        
-        file_part = FilePart(
-            file=FileWithBytes(
-                name=filename,
-                bytes=base64_content,
-                mime_type=mime_type
-            )
-        )
-        return AgentArtifact(name=filename, parts=[file_part])
+        binary_data = base64.b64decode(data) if isinstance(data, str) else data
+        file = await File.create(filename=filename, content_type=mime_type, content=binary_data)
+        return file.to_file_part()
     except Exception as e:
-        logger.error(f"Error creating file artifact {filename}: {e}")
+        logger.error(f"Error creating file {filename}: {e}")
         return None
 
 
-def handle_mcp_image_content(item, tool_name: str):
-    """Handle MCP ImageContent objects and create downloadable artifacts"""
-    if str(type(item)) != "<class 'mcp.types.ImageContent'>":
-        return None
+async def handle_mcp_content(item, tool_name: str):
+    """Handle various MCP content types and create downloadable files"""
+    item_type = str(type(item))
+    
+    # Handle ImageContent
+    if item_type == "<class 'mcp.types.ImageContent'>":
+        image_data = getattr(item, 'data', None)
+        if not image_data:
+            return None
+        mime_type = getattr(item, 'mimeType', None) or getattr(item, 'mime_type', 'image/png')
+        filename = f"{tool_name}_tiny_image.png"
+        return await create_file_from_data(image_data, filename, mime_type)
+    
+    # Handle EmbeddedResource
+    elif item_type == "<class 'mcp.types.EmbeddedResource'>":
+        resource_data = getattr(item, 'resource', None)
+        if not resource_data:
+            return None
+        resource_text = getattr(resource_data, 'text', '')
+        if not resource_text:
+            return None
         
-    print(f"🖼️ DEBUG - Found MCP ImageContent object!")
-    image_data = getattr(item, 'data', None)
-    mime_type = getattr(item, 'mimeType', None) or getattr(item, 'mime_type', 'image/png')
-    
-    print(f"🖼️ DEBUG - Image data length: {len(image_data) if image_data else 'None'}")
-    print(f"🖼️ DEBUG - MIME type: {mime_type}")
-    
-    if image_data:
-        try:
-            # Use base64 decode to get binary data, then create file artifact
-            import base64
-            binary_data = base64.b64decode(image_data)
-            text_data = binary_data.decode('latin-1')  # Use latin-1 to preserve bytes
-            
-            filename = f"{tool_name}_output.png"
-            artifact = create_file_artifact(filename, text_data, mime_type)
-            if artifact:
-                print(f"🖼️ DEBUG - Created artifact using create_file_artifact: {filename}")
-                return artifact
-            else:
-                print(f"🖼️ DEBUG - Failed to create artifact using create_file_artifact")
-        except Exception as e:
-            print(f"🖼️ DEBUG - Error creating artifact: {e}")
+        resource_name = getattr(resource_data, 'name', f"{tool_name}_resource")
+        mime_type = getattr(resource_data, 'mimeType', 'text/plain')
+        extension = ".txt" if mime_type == 'text/plain' else ".bin"
+        filename = f"{resource_name.replace(' ', '_')}{extension}"
+        
+        return await create_file_from_data(resource_text.encode('utf-8'), filename, mime_type)
     
     return None
-
-
-def handle_mcp_embedded_resource(item, tool_name: str):
-    """Handle MCP EmbeddedResource objects and create downloadable artifacts"""
-    if str(type(item)) != "<class 'mcp.types.EmbeddedResource'>":
-        return None
-        
-    print(f"📄 DEBUG - Found MCP EmbeddedResource object!")
-    resource_data = getattr(item, 'resource', None)
-    
-    if not resource_data:
-        print(f"📄 DEBUG - No resource data found in EmbeddedResource")
-        return None
-    
-    resource_text = getattr(resource_data, 'text', '')
-    resource_name = getattr(resource_data, 'name', f"{tool_name}_resource")
-    mime_type = getattr(resource_data, 'mimeType', 'text/plain')
-    
-    print(f"📄 DEBUG - Resource name: {resource_name}")
-    print(f"📄 DEBUG - Resource text length: {len(resource_text)}")
-    print(f"📄 DEBUG - MIME type: {mime_type}")
-    
-    if resource_text:
-        filename = f"{resource_name.replace(' ', '_')}.txt" if mime_type == 'text/plain' else f"{resource_name.replace(' ', '_')}.bin"
-        artifact = create_file_artifact(filename, resource_text, mime_type)
-        if artifact:
-            print(f"📄 DEBUG - Created artifact: {filename}")
-        return artifact
-    
-    print(f"📄 DEBUG - No resource text found")
-    return None
-
-
-def handle_mcp_resource_link(item, tool_name: str):
-    """Handle MCP ResourceLink objects and create metadata files"""
-    if str(type(item)) != "<class 'mcp.types.ResourceLink'>":
-        return None
-        
-    print(f"📄 DEBUG - Found MCP ResourceLink object!")
-    resource_name = getattr(item, 'name', f"{tool_name}_link")
-    resource_uri = getattr(item, 'uri', '')
-    resource_description = getattr(item, 'description', '')
-    mime_type = getattr(item, 'mimeType', 'text/plain')
-    
-    print(f"📄 DEBUG - Resource name: {resource_name}")
-    print(f"📄 DEBUG - Resource URI: {resource_uri}")
-    
-    # Create metadata content
-    resource_content = f"Resource Link: {resource_name}\nURI: {resource_uri}\nDescription: {resource_description}\nMIME Type: {mime_type}"
-    filename = f"{resource_name.replace(' ', '_')}_metadata.txt"
-    
-    artifact = create_file_artifact(filename, resource_content, 'text/plain')
-    if artifact:
-        print(f"📄 DEBUG - Created metadata artifact: {filename}")
-    return artifact
 
 @server.agent(
     name="Everything Agent",
     default_input_modes=["text", "text/plain"],
-    default_output_modes=["text", "text/plain"],
+    default_output_modes=["text", "text/plain", "image/png"],
     detail=AgentDetail(
         interaction_mode="multi-turn",
         user_greeting="Hi! I'm your Everything Agent powered by MCP Everything Server tools. I can help you with calculations, file operations, web requests, and much more!",
@@ -295,18 +234,17 @@ async def everything_agent(
             model_id=llm_config.api_model,
             base_url=llm_config.api_base,
             api_key=llm_config.api_key,
+            tool_call_fallback_via_response_format=False,  # Use native tool calling, not response format fallback
             parameters=ChatModelParameters(
-                temperature=0.0,
-                system_message="You are an intelligent agent using MCP Everything Server tools. IMPORTANT: When using getResourceReference tool, resourceId must be between 1-100. When using other resource tools, use valid resource IDs (1-5 are typically available). Always validate tool parameters before making calls."
+                temperature=0.1,  # Slightly higher to improve structured output reliability
+                system_message="You are an intelligent agent using MCP Everything Server tools. When using getResourceReference tool, resourceId must be between 1-100. When using other resource tools, use valid resource IDs (1-5 are typically available). Always validate tool parameters before making calls."
             ),
-            tool_choice_support=set()
+            tool_choice_support=set(),  # Enable tool choice support
         )
         
         # Create think tool and combine with MCP tools
         think_tool = ThinkTool()
         all_agent_tools = [think_tool] + all_tools
-        
-        print(f"🔧 Loaded {len(all_agent_tools)} tools (1 think tool + {len(all_tools)} MCP tools)")
         
         # Create conditional requirements
         requirements = []
@@ -340,9 +278,6 @@ async def everything_agent(
                 priority=75
             )
             requirements.append(resource_reference_requirement)
-            print(f"🔧 DEBUG - Added requirement: {resource_reference_tool.name} must run after {resource_links_tool.name}")
-        else:
-            print(f"🔧 DEBUG - Could not find required tools: getResourceLinks={resource_links_tool is not None}, getResourceReference={resource_reference_tool is not None}")
         
         # Create RequirementAgent with conditional requirements
         requirement_agent = RequirementAgent(
@@ -368,14 +303,6 @@ async def everything_agent(
                 
                 tool_name = step.tool.name
                 
-                # Debug: Print tool results for debugging
-                print(f"🔍 DEBUG - Tool: {tool_name}")
-                print(f"🔍 DEBUG - Step input: {step.input}")
-                print(f"🔍 DEBUG - Step output: {step.output}")
-                print(f"🔍 DEBUG - Step output type: {type(step.output)}")
-                if hasattr(step.output, '__dict__'):
-                    print(f"🔍 DEBUG - Step output attributes: {list(step.output.__dict__.keys())}")
-                print("=" * 50)
                 
                 # Handle final answer
                 if tool_name == "final_answer":
@@ -404,15 +331,13 @@ async def everything_agent(
                                 # Skip creating files for getResourceLinks - it just lists resources
                                 continue
                             else:
-                                # Only handle embedded resources for file creation
-                                artifact = handle_mcp_embedded_resource(item, tool_name)
-                                if artifact:
-                                    yield artifact
+                                # Handle any MCP content type
+                                file_part = await handle_mcp_content(item, tool_name)
+                                if file_part:
+                                    yield file_part
 
-                # Handle image and file-generating tools
-                elif "image" in tool_name.lower() or "file" in tool_name.lower():
-                    print(f"🖼️ DEBUG - Handling image/file tool: {tool_name}")
-                    
+                # Handle image tools
+                elif "image" in tool_name.lower() or "tinyimage" in tool_name.lower():
                     yield trajectory.trajectory_metadata(
                         title=f"📁 {tool_name}",
                         content=f"Generating file/image with {tool_name}..."
@@ -420,59 +345,14 @@ async def everything_agent(
                     
                     # Check if the tool output has files to download
                     if hasattr(step, 'output') and step.output:
-                        print(f"🖼️ DEBUG - Tool has output, checking for file content...")
-                        
                         # Handle JSONToolOutput with result array (MCP Everything Server format)
                         if hasattr(step.output, 'result') and isinstance(step.output.result, list):
-                            print(f"🖼️ DEBUG - Found result array with {len(step.output.result)} items")
-                            for i, item in enumerate(step.output.result):
-                                print(f"🖼️ DEBUG - Item {i}: {type(item)} - {item if isinstance(item, dict) else 'Non-dict item'}")
-                                
-                                # Handle MCP ImageContent objects - create downloadable files only
-                                artifact = handle_mcp_image_content(item, tool_name)
-                                if artifact:
-                                    yield artifact
-                                
-                                
-                        
-                        # Handle file creation tool output (original format)
-                        elif hasattr(step.output, 'result') and hasattr(step.output.result, 'files'):
-                            print(f"🖼️ DEBUG - Found files in result")
-                            result = step.output.result
-                            for file_info in result.files:
-                                print(f"🖼️ DEBUG - Processing file: {file_info.display_filename}")
-                                part = file_info.file.to_file_part()
-                                part.file.name = file_info.display_filename
-                                yield AgentArtifact(name=file_info.display_filename, parts=[part])
-                        
-                        # Handle direct content (fallback)
-                        elif hasattr(step.output, 'content'):
-                            print(f"🖼️ DEBUG - Found content in output")
-                            content = step.output.content
-                            print(f"🖼️ DEBUG - Content type: {type(content)}")
-                            
-                            if hasattr(content, 'data') or hasattr(content, 'bytes'):
-                                print(f"🖼️ DEBUG - Found binary data, creating artifact")
-                                from beeai_sdk.a2a.types import FilePart, FileWithBytes
-                                file_data = content.data if hasattr(content, 'data') else content.bytes
-                                filename = f"{tool_name}_output.png" if "image" in tool_name.lower() else f"{tool_name}_output.bin"
-                                
-                                file_part = FilePart(
-                                    file=FileWithBytes(
-                                        name=filename,
-                                        bytes=file_data,
-                                        mime_type="image/png" if "image" in tool_name.lower() else "application/octet-stream"
-                                    )
-                                )
-                                yield AgentArtifact(name=filename, parts=[file_part])
-                                print(f"🖼️ DEBUG - Created artifact: {filename}")
-                            else:
-                                print(f"🖼️ DEBUG - No binary data found in content")
-                        else:
-                            print(f"🖼️ DEBUG - No recognized file format found in output")
-                    else:
-                        print(f"🖼️ DEBUG - Tool has no output")
-                
+                            for item in step.output.result:
+                                # Handle MCP content objects - create downloadable files
+                                file_part = await handle_mcp_content(item, tool_name)
+                                if file_part:
+                                    yield file_part
+                     
                 # Handle long running operations with task status updates
                 elif "longrunningoperation" in tool_name.lower() or "long_running" in tool_name.lower():
                     yield trajectory.trajectory_metadata(
@@ -504,7 +384,6 @@ async def everything_agent(
             yield AgentMessage(text="\n\n✅ Task completed")
         
     except Exception as e:
-        import traceback
         logger.error(f"Error in everything_agent: {e}")
         logger.error(f"Full traceback: {traceback.format_exc()}")
         yield AgentMessage(text=f"❌ Error: {str(e)}")
