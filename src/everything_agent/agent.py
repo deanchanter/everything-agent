@@ -198,7 +198,7 @@ async def everything_agent(
     input: Message,
     llm: Annotated[
         LLMServiceExtensionServer,
-        LLMServiceExtensionSpec.single_demand()
+        LLMServiceExtensionSpec.single_demand(suggested=("granite-3-3-8b", "openai/gpt-4o", "anthropic/claude-4-sonnet"))
     ],
     trajectory: Annotated[
         TrajectoryExtensionServer,
@@ -230,34 +230,44 @@ async def everything_agent(
         llm_config = llm.data.llm_fulfillments.get("default")
         
         # Create OpenAI chat model instance with platform configuration and validation instructions
+        model_params = ChatModelParameters(
+            temperature=0.1,
+            system_message=(
+                "You are an intelligent agent using MCP Everything Server tools. "
+                "When using getResourceReference tool, resourceId must be between 1-100. "
+                "When using other resource tools, use valid resource IDs (1-5 are typically available). "
+                "Always validate tool parameters before making calls."
+            )
+        )
+        
+        # Use native tool calling for Claude, response format fallback for others
+        use_response_format_fallback = 'claude' not in llm_config.api_model.lower()
+        
         chat_model = OpenAIChatModel(
             model_id=llm_config.api_model,
             base_url=llm_config.api_base,
             api_key=llm_config.api_key,
-            tool_call_fallback_via_response_format=False,  # Use native tool calling, not response format fallback
-            parameters=ChatModelParameters(
-                temperature=0.1,  # Slightly higher to improve structured output reliability
-                system_message="You are an intelligent agent using MCP Everything Server tools. When using getResourceReference tool, resourceId must be between 1-100. When using other resource tools, use valid resource IDs (1-5 are typically available). Always validate tool parameters before making calls."
-            ),
+            tool_call_fallback_via_response_format=use_response_format_fallback,
+            parameters=model_params,
             tool_choice_support=set(),  # Enable tool choice support
         )
-        
-        # Create think tool and combine with MCP tools
-        think_tool = ThinkTool()
-        all_agent_tools = [think_tool] + all_tools
-        
+
         # Create conditional requirements
         requirements = []
-        
-        # Force think tool to be called first
-        think_requirement = ConditionalRequirement(
-            target=think_tool,
-            name="think_first",
-            min_invocations=1,
-            priority=100,
-            force_at_step=1,  # Force it to be the first step
-        )
-        requirements.append(think_requirement)
+        if 'claude' not in llm_config.api_model.lower():
+            # Create think tool and combine with MCP tools
+            think_tool = ThinkTool()
+            all_tools.append(think_tool)
+
+            # Force think tool to be called first
+            think_requirement = ConditionalRequirement(
+                target=think_tool,
+                name="think_first",
+                min_invocations=1,
+                priority=100,
+                force_at_step=1,  # Force it to be the first step
+            )
+            requirements.append(think_requirement)
         
         # Find specific tools for special requirements
         resource_links_tool = None
@@ -282,7 +292,7 @@ async def everything_agent(
         # Create RequirementAgent with conditional requirements
         requirement_agent = RequirementAgent(
             llm=chat_model,
-            tools=all_agent_tools,  # Think tool + all MCP tools from everything server
+            tools=all_tools,
             requirements=requirements
         )
         
