@@ -58,7 +58,7 @@ The Everything Agent leverages the Model Context Protocol (MCP) to connect with 
 
 3. **Run the agent**:
    ```sh
-   uv run python -m everything_agent.agent
+   uv run server
    ```
 
 ## Agent Capabilities
@@ -120,7 +120,7 @@ To test the agent locally:
 
 ```sh
 # Start the agent server
-uv run python -m everything_agent.agent
+uv run server
 ```
 
 This will start a local HTTP server on http://127.0.0.1:8000 by default. The agent will automatically:
