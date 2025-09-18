@@ -217,9 +217,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/14/23dd0565e6cfc16717779d0b8c0d8a3e432e966b1425ced25ac36b081deb/beeai_sdk-0.3.3.tar.gz", hash = "sha256:65967ff78cbcd17709be5996e4956d417b531a3d996bd5c79db45d4aebc3f9d1", size = 30021 }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/14/23dd0565e6cfc16717779d0b8c0d8a3e432e966b1425ced25ac36b081deb/beeai_sdk-0.3.3.tar.gz", hash = "sha256:65967ff78cbcd17709be5996e4956d417b531a3d996bd5c79db45d4aebc3f9d1", size = 30021, upload-time = "2025-09-08T16:41:36.696Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/1e/346d882c78a3b49dee69f2c5fbb44638c68aa13c1b630708d24ecaeaac23/beeai_sdk-0.3.3-py3-none-any.whl", hash = "sha256:e4790f09bf6cec5c747c5b6cf6712fe7dd11ea7973295f8cfc1605ead7d345f0", size = 51378 },
+    { url = "https://files.pythonhosted.org/packages/e9/1e/346d882c78a3b49dee69f2c5fbb44638c68aa13c1b630708d24ecaeaac23/beeai_sdk-0.3.3-py3-none-any.whl", hash = "sha256:e4790f09bf6cec5c747c5b6cf6712fe7dd11ea7973295f8cfc1605ead7d345f0", size = 51378, upload-time = "2025-09-08T16:41:35.532Z" },
 ]
 
 [[package]]
@@ -1761,7 +1761,7 @@ dependencies = [
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5e/42/e0e305207bb88c6b8d3061399c6a961ffe5fbb7e2aa63c9234df7259e9cd/uvicorn-0.35.0.tar.gz", hash = "sha256:bc662f087f7cf2ce11a1d7fd70b90c9f98ef2e2831556dd078d131b96cc94a01", size = 78473 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/e2/dc81b1bd1dcfe91735810265e9d26bc8ec5da45b4c0f6237e286819194c3/uvicorn-0.35.0-py3-none-any.whl", hash = "sha256:197535216b25ff9b785e29a0b79199f55222193d47f820816e7da751e9bc8d4a", size = 66406 },
+    { url = "https://files.pythonhosted.org/packages/d2/e2/dc81b1bd1dcfe91735810265e9d26bc8ec5da45b4c0f6237e286819194c3/uvicorn-0.35.0-py3-none-any.whl", hash = "sha256:197535216b25ff9b785e29a0b79199f55222193d47f820816e7da751e9bc8d4a", size = 66406, upload-time = "2025-06-28T16:15:44.816Z" },
 ]
 
 [[package]]

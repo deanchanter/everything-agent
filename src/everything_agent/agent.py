@@ -113,11 +113,11 @@ async def handle_mcp_content(item, tool_name: str):
 
 @server.agent(
     name="Everything Agent",
-    default_input_modes=["text", "text/plain"],
+    default_input_modes=["text",],
     default_output_modes=["text", "text/plain", "image/png"],
     detail=AgentDetail(
         interaction_mode="multi-turn",
-        user_greeting="Hi! I'm your Everything Agent powered by MCP Everything Server tools. I can help you with calculations, file operations, web requests, and much more!",
+        user_greeting="Hi! I'm your Everything Agent powered by MCP Everything Server tools. I can help you with calculations, file operations, and much more!",
         version="0.1.0",
         tools=[
             AgentDetailTool(
@@ -158,7 +158,7 @@ async def handle_mcp_content(item, tool_name: str):
             )
         ],
         framework="BeeAI",
-        homepage_url="https://github.com/deanchanter/everything-agent",
+        source_code_url="https://github.com/deanchanter/everything-agent",
         container_image_url="ghcr.io/deanchanter/everything-agent/my-agent",
         author=AgentDetailContributor(
             name="Dean Chanter",
@@ -172,7 +172,7 @@ async def handle_mcp_content(item, tool_name: str):
             description=dedent(
                 """\
                 A comprehensive agent that leverages MCP Everything Server tools to perform a wide variety of tasks
-                including mathematical operations, content processing, file handling, web requests, and interactive operations.
+                including mathematical operations, content processing, file handling, and interactive operations.
                 The agent thinks through problems systematically and uses appropriate tools to accomplish tasks efficiently.
                 """
             ),
@@ -205,13 +205,7 @@ async def everything_agent(
         TrajectoryExtensionSpec()
     ],
 ):
-    """Advanced RequirementAgent using all MCP everything server tools with LLM integration
-    
-    IMPORTANT VALIDATION RULES:
-    - For getResourceReference tool: resourceId must be between 1 and 100 (inclusive)
-    - For all resource tools: use valid resource IDs (1-5 are typically available)
-    - Always validate tool parameters match the expected schema before calling
-    """
+    """Everything Agent that uses MCP Everything Server tools to perform various tasks"""
     
     # Initialize all MCP tools
     all_tools = await initialize_selected_mcp_tools()
@@ -228,18 +222,8 @@ async def everything_agent(
         
         # Get LLM configuration from BeeAI platform
         llm_config = llm.data.llm_fulfillments.get("default")
-        
-        # Create OpenAI chat model instance with platform configuration and validation instructions
-        model_params = ChatModelParameters(
-            temperature=0.1,
-            system_message=(
-                "You are an intelligent agent using MCP Everything Server tools. "
-                "When using getResourceReference tool, resourceId must be between 1-100. "
-                "When using other resource tools, use valid resource IDs (1-5 are typically available). "
-                "Always validate tool parameters before making calls."
-            )
-        )
-        
+                
+                
         # Use native tool calling for Claude, response format fallback for others
         use_response_format_fallback = 'claude' not in llm_config.api_model.lower()
         
@@ -248,7 +232,7 @@ async def everything_agent(
             base_url=llm_config.api_base,
             api_key=llm_config.api_key,
             tool_call_fallback_via_response_format=use_response_format_fallback,
-            parameters=model_params,
+            parameters=ChatModelParameters(temperature=0.1),
             tool_choice_support=set(),  # Enable tool choice support
         )
 
@@ -272,12 +256,18 @@ async def everything_agent(
         # Find specific tools for special requirements
         resource_links_tool = None
         resource_reference_tool = None
+        final_answer_tool = None
+        other_tools = []
         
         for mcp_tool in all_tools:
             if "getResourceLinks" in mcp_tool.name:
                 resource_links_tool = mcp_tool
             elif "getResourceReference" in mcp_tool.name:
                 resource_reference_tool = mcp_tool
+            elif mcp_tool.name == "final_answer":
+                final_answer_tool = mcp_tool
+            elif mcp_tool.name != "think":  # Exclude think tool from other tools
+                other_tools.append(mcp_tool)
 
         # Requirement: getResourceReference runs after getResourceLinks
         if resource_links_tool and resource_reference_tool:
@@ -285,15 +275,39 @@ async def everything_agent(
                 target=resource_reference_tool,
                 name="resource_reference_after_links",
                 force_after=[resource_links_tool],
-                priority=75
+                priority=99
             )
             requirements.append(resource_reference_requirement)
+        
+        # Requirement: All tools other than getResourceLinks and getResourceReference should call final_answer after
+        # if final_answer_tool and other_tools:
+        #     for tool in other_tools:
+        #         # Skip getResourceLinks and getResourceReference tools
+        #         if ("getResourceLinks" not in tool.name and 
+        #             "getResourceReference" not in tool.name):
+        #             final_answer_requirement = ConditionalRequirement(
+        #                 target=final_answer_tool,
+        #                 name=f"final_answer_after_{tool.name}",
+        #                 force_after=[tool],
+        #                 priority=98
+        #             )
+        #             requirements.append(final_answer_requirement)
         
         # Create RequirementAgent with conditional requirements
         requirement_agent = RequirementAgent(
             llm=chat_model,
             tools=all_tools,
-            requirements=requirements
+            requirements=requirements,
+            instructions= dedent("""\
+                You are an Everything Agent that uses MCP Everything Server tools to perform various tasks.
+                Think through problems step-by-step and use the appropriate tools to accomplish tasks efficiently.
+                Use the tools provided to you, and follow the requirements specified.
+                If you need to think, use the Think tool first.
+                If you need to get resource links, use the getResourceLinks tool.
+                If you need to reference a resource, use the getResourceReference tool.
+                Valide Resources are 1-100.
+                Always provide a final answer using the final_answer tool when available.
+            """),
         )
         
         # Run the requirement agent with yielding pattern
